@@ -1,0 +1,304 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'parslet'
+
+class Parser < Parslet::Parser
+  rule(:root) { sp? >> statement_list.maybe >> sp? }
+
+  rule(:k_if) { sp? >> str('if') >> sp? }
+  rule(:k_else) { sp? >> str('else') >> sp? }
+  rule(:k_while) { sp? >> str('while') >> sp? }
+  rule(:k_p) { sp? >> str('p') >> sp? }
+  rule(:lcurly) { sp? >> str("{") >> sp? }
+  rule(:rcurly) { sp? >> str("}") >> sp? }
+
+  rule(:assign) { sp? >> str("=") >> sp? }
+  rule(:equals) { sp? >> str("==") >> sp? }
+  rule(:lt) { sp? >> str("<") >> sp? }
+  rule(:gt) { sp? >> str(">") >> sp? }
+  rule(:lte) { sp? >> str("<=") >> sp? }
+  rule(:gte) { sp? >> str(">=") >> sp? }
+  rule(:plus) { sp? >> str("+") >> sp? }
+  rule(:minus) { sp? >> str("-") >> sp? }
+
+  rule(:star) { sp? >> str("*") >> sp? }
+  rule(:slash) { sp? >> str("/") >> sp? }
+  rule(:bang) { sp? >> str("!") >> sp? }
+
+  rule(:quote) { str('"') }
+
+  rule(:lparen) { sp? >> str("(") >> sp? }
+  rule(:rparen) { sp? >> str(")") >> sp? }
+
+  rule(:letter) { match['[a-zA-Z]'] }
+  rule(:digit) { match['[0-9]'] }
+  rule(:number) { digit.repeat(1) }
+  rule(:underscore) { str('_') }
+  rule(:identifier) { (letter >> (letter | number | underscore).repeat).as(:id) }
+
+  rule(:statement_list) { (statement >> (t >> statement).repeat).as(:statement_list) }
+  rule(:statement) { if_else_statement | while_statement | print_statement | assignment }
+  rule(:if_else_statement) { (k_if >> lparen >> exp.as(:condition) >> rparen >> lcurly >> statement_list.maybe.as(:if_body) >> rcurly >> k_else >> lcurly >> statement_list.maybe.as(:else_body) >> rcurly).as(:if_else_statement) }
+  rule(:while_statement) { (k_while >> lparen >> exp.as(:condition) >> rparen >> lcurly >> statement_list.maybe.as(:body) >> rcurly).as(:while_statement) }
+  rule(:assignment) { (identifier.as(:left) >> assign >> exp.as(:right)).as(:assignment) }
+  rule(:print_statement) { (k_p >> exp).as(:print_statement) }
+
+  rule(:exp) { (add_exp >> ((equals | lte | gte | lt | gt).as(:op) >> add_exp).maybe.as(:comparison)).as(:exp) }
+  rule(:add_exp) { (mult_exp >> ((plus | minus).as(:op) >> mult_exp).repeat.as(:additions)).as(:add_exp) }
+  rule(:mult_exp) { (prefix_exp >> ((star | slash).as(:op) >> prefix_exp).repeat.as(:multiplications)).as(:mult_exp) }
+  rule(:prefix_exp) { (not_exp | prim_exp).as(:prefix_exp) }
+  rule(:not_exp) { (bang.repeat(1).as(:bang) >> exp).as(:not_exp) }
+  rule(:prim_exp) { paren_exp | int_lit | true_lit | false_lit | string_lit | identifier }
+  rule(:paren_exp) { (lparen >> exp >> rparen).as(:paren_exp) }
+
+  rule(:int_lit) { number.as(:int_lit) }
+  rule(:true_lit) { str('true').as(:true_lit) }
+  rule(:false_lit) { str('false').as(:false_lit) }
+  rule(:string_lit) { quote >> (quote.absent? >> any).repeat.as(:string_lit) >> quote }
+
+  rule(:t) { match["\r\n"].repeat }
+  rule(:sp) { match[" \t\r\n"].repeat(1) }
+  rule(:sp?) { sp.repeat }
+end
+
+class AstNode
+  def initialize(args)
+    args.each do |k, v|
+      send "#{k}=", v
+    end
+  end
+
+  def accept(visitor)
+    visitor.visit(self)
+  end
+end
+
+class Int < AstNode
+  attr_accessor :value
+end
+
+class Str < AstNode
+  attr_accessor :value
+end
+
+class Bool < AstNode
+  attr_accessor :value
+end
+
+class PrintStatement < AstNode
+  attr_accessor :exp
+end
+
+class Operation < AstNode
+  attr_accessor :op, :exp
+end
+
+class Addition < AstNode
+  attr_accessor :left, :right
+end
+
+class Multiplication < AstNode
+  attr_accessor :left, :right
+end
+
+class Comparison < AstNode
+  attr_accessor :left, :right
+end
+
+class StatementList < AstNode
+  attr_accessor :statements
+end
+
+class IfElseStatement < AstNode
+  attr_accessor :condition, :if_body, :else_body
+end
+
+class WhileStatement < AstNode
+  attr_accessor :condition, :body
+end
+
+class Assignment < AstNode
+  attr_accessor :left, :right
+end
+
+class Id < AstNode
+  attr_accessor :name
+end
+
+class AstBuilder < Parslet::Transform
+  rule(int_lit: simple(:int_lit)) { Int.new(value: int_lit) }
+  rule(string_lit: simple(:string_lit)) { Str.new(value: string_lit) }
+  rule(true_lit: simple(:true_lit)) { Bool.new(value: true_lit) }
+  rule(false_lit: simple(:false_lit)) { Bool.new(value: false_lit) }
+
+  rule(id: simple(:id)) { Id.new(name: id.to_s.strip) }
+
+  rule(statement_list: subtree(:statements)) do
+    StatementList.new(statements: statements)
+  end
+
+  rule(print_statement: subtree(:exp)) { PrintStatement.new(exp: exp) }
+
+  rule(if_else_statement: { condition: subtree(:condition), if_body: subtree(:if_body), else_body: subtree(:else_body) }) do
+    IfElseStatement.new(
+      condition: condition,
+      if_body: if_body,
+      else_body: else_body
+    )
+  end
+
+  rule(while_statement: { condition: subtree(:condition), body: subtree(:body) }) do
+    WhileStatement.new(condition: condition, body: body)
+  end
+
+  rule(assignment: { left: subtree(:left), right: subtree(:right) }) do
+    Assignment.new(left: left, right: right)
+  end
+
+  rule(exp: subtree(:exp)) { exp }
+  rule(paren_exp: subtree(:paren_exp)) { paren_exp }
+
+  rule(add_exp: subtree(:add_exp), comparison: subtree(:comparison)) do
+    if comparison.nil?
+      add_exp
+    else
+      Comparison.new(left: add_exp, right: comparison)
+    end
+  end
+
+  rule(mult_exp: subtree(:mult_exp), additions: subtree(:additions)) do
+    if additions.empty?
+      mult_exp
+    else
+      Addition.new(left: mult_exp, right: additions)
+    end
+  end
+
+  rule(prefix_exp: subtree(:prefix_exp), multiplications: subtree(:multiplications)) do
+    if multiplications.empty?
+      prefix_exp
+    else
+      Multiplication.new(left: prefix_exp, right: multiplications)
+    end
+  end
+
+  rule(op: simple(:op), mult_exp: subtree(:mult_exp)) do
+    Operation.new(op: op.to_s.strip, exp: mult_exp)
+  end
+
+  rule(op: simple(:op), add_exp: subtree(:add_exp)) do
+    Operation.new(op: op.to_s.strip, exp: add_exp)
+  end
+
+  rule(op: simple(:op), prefix_exp: subtree(:prefix_exp)) do
+    Operation.new(op: op.to_s.strip, exp: prefix_exp)
+  end
+end
+
+class Interpreter
+  attr_reader :variables
+
+  def initialize
+    @parser = Parser.new
+    @ast_builder = AstBuilder.new
+    @variables = {}
+  end
+
+  def interpret(input)
+    tree = @parser.parse(input.strip)
+    ast = @ast_builder.apply(tree)
+    ast.accept(self)
+  end
+
+  def interpret_exp(input)
+    tree = @parser.exp.parse(input.strip)
+    ast = @ast_builder.apply(tree)
+    ast.accept(self)
+  end
+
+  def visit(n)
+    send("visit_#{n.class}", n)
+  end
+
+  def visit_Int(n)
+    n.value.to_i
+  end
+
+  def visit_Str(n)
+    n.value.to_s
+  end
+
+  def visit_Bool(n)
+    n.value == 'true'
+  end
+
+  def visit_PrintStatement(n)
+    puts visit(n.exp)
+  end
+
+  def visit_Comparison(n)
+    left = visit(n.left)
+    op = n.right.op
+    right = visit(n.right.exp)
+    left.send(op, right)
+  end
+
+  def visit_Addition(n)
+    left = visit(n.left)
+
+    n.right.each do |r|
+      op = r.op
+      right = visit(r.exp)
+      left = left.send(op, right)
+    end
+
+    left
+  end
+
+  def visit_Multiplication(n)
+    left = visit(n.left)
+
+    n.right.each do |r|
+      op = r.op
+      right = visit(r.exp)
+      left = left.send(op, right)
+    end
+
+    left
+  end
+
+  def visit_IfElseStatement(n)
+    if visit(n.condition)
+      visit(n.if_body)
+    else
+      visit(n.else_body)
+    end
+  end
+
+  def visit_WhileStatement(n)
+    visit(n.body) while visit(n.condition)
+  end
+
+  def visit_Assignment(n)
+    var = n.left.name
+    ref = visit(n.right)
+    @variables[var] = ref
+  end
+
+  def visit_Id(n)
+    @variables[n.name]
+  end
+
+  def visit_StatementList(n)
+    if n.statements.is_a?(Array)
+      n.statements.each { |s| visit(s) }
+    else
+      visit(n.statements)
+    end
+  end
+end
+
+if __FILE__ == $PROGRAM_NAME
+  Interpreter.new.interpret(ARGF.read.strip)
+end

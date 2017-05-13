@@ -1,0 +1,4 @@
+foo = 2
+bar = 34
+baz = foo + bar / 2
+p baz + 4
