@@ -15,7 +15,7 @@ class ParserTest < MiniTest::Test
     tree = @parser.statement.parse('p 4')
   end
 
-  def test_print_statement
+  def test_print_statement2
     tree = @parser.statement.parse('p foo')
   end
 
@@ -44,7 +44,25 @@ class ParserTest < MiniTest::Test
       }
     EOS
 
-    tree = @parser.statement.parse_with_debug(input)
+    tree = @parser.statement.parse(input)
+  end
+
+  def test_function_declaration
+    input = <<~EOS
+      foo = f() {
+          p "foo"
+      }
+    EOS
+
+    tree = @parser.statement.parse(input)
+  end
+
+  def test_function_call
+    input = <<~EOS
+      a = add(1, 2)
+    EOS
+
+    tree = @parser.statement.parse(input)
   end
 
   def test_while_loop
@@ -114,6 +132,21 @@ class ParserTest < MiniTest::Test
 
     @parser.parse input
   end
+
+  def test_recursion
+    input = <<~EOS
+      dec = f(n) {
+          p n
+          if (n == 1) {
+          } else {
+            ret = f(n - 1)
+          }
+      }
+
+      ret = f(10)
+    EOS
+    tree = @parser.parse input
+  end
 end
 
 class InterpreterTest < MiniTest::Test
@@ -122,25 +155,25 @@ class InterpreterTest < MiniTest::Test
   end
 
   def test_int_literal
-    result = @i.interpret_exp '3'
+    result = @i.interpret '3'
     assert_equal 3, result
   end
 
   def test_string_literal
-    result = @i.interpret_exp '"foobar"'
+    result = @i.interpret '"foobar"'
     assert_equal "foobar", result
   end
 
   def test_single_asignment
     result = @i.interpret 'a = 10'
-    assert_equal @i.variables['a'], 10
+    assert_equal @i.definitions['a'], 10
   end
 
   def test_bool_literal
-    result = @i.interpret_exp 'true'
+    result = @i.interpret 'true'
     assert_equal true, result
 
-    result = @i.interpret_exp 'false'
+    result = @i.interpret 'false'
     assert_equal false, result
   end
 
@@ -151,40 +184,40 @@ class InterpreterTest < MiniTest::Test
   end
 
   def test_addition
-    result = @i.interpret_exp '2 + 2'
+    result = @i.interpret '2 + 2'
     assert_equal 4, result
 
-    result = @i.interpret_exp '2 + 2 + 2'
+    result = @i.interpret '2 + 2 + 2'
     assert_equal 6, result
 
-    result = @i.interpret_exp '2 + 2-3'
+    result = @i.interpret '2 + 2-3'
     assert_equal 1, result
   end
 
   def test_multiplication
-    result = @i.interpret_exp '4*3'
+    result = @i.interpret '4*3'
     assert_equal 12, result
 
-    result = @i.interpret_exp '3*16/2'
+    result = @i.interpret '3*16/2'
     assert_equal 24, result
   end
 
   def test_precedence
-    result = @i.interpret_exp '2 + 8 * 3 / 2'
+    result = @i.interpret '2 + 8 * 3 / 2'
     assert_equal 14, result
   end
 
   def test_comparison
-    result = @i.interpret_exp '2 < 4'
+    result = @i.interpret '2 < 4'
     assert_equal true, result
 
-    result = @i.interpret_exp '2 > 4'
+    result = @i.interpret '2 > 4'
     assert_equal false, result
 
-    result = @i.interpret_exp '4 == 2 + 2'
+    result = @i.interpret '4 == 2 + 2'
     assert_equal true, result
 
-    result = @i.interpret_exp '6-2 <= 4+4+4-4'
+    result = @i.interpret '6-2 <= 4+4+4-4'
     assert_equal true, result
   end
 
@@ -218,13 +251,13 @@ class InterpreterTest < MiniTest::Test
 
   def test_paren_exp
     input = '(2 + 8) * 11'
-    result = @i.interpret_exp input
+    result = @i.interpret input
     assert_equal 110, result
   end
 
   def test_modulo
     input = '3 * 9 % 2'
-    result = @i.interpret_exp input
+    result = @i.interpret input
     assert_equal 1, result
   end
 
@@ -302,6 +335,51 @@ class InterpreterTest < MiniTest::Test
     EOS
 
     assert_output /#{expected}/ do
+      @i.interpret input
+    end
+  end
+
+  def test_function_declaration
+    input = <<~EOS
+      add = f(a, b) {
+          p a + b
+      }
+    EOS
+    @i.interpret input
+    assert_instance_of Function, @i.definitions['add']
+  end
+
+  def test_function_call
+    input = <<~EOS
+      a = 99
+
+      add = f(a, b) {
+         a + b
+      }
+
+      p add (1+1, 5)
+      p a
+    EOS
+
+    assert_output /7\n99/ do
+      @i.interpret input
+    end
+  end
+
+  def test_recursion
+    input = <<~EOS
+      dec = f(n) {
+          p n
+          if (n == 1) {
+          } else {
+            dec(n - 1)
+          }
+      }
+
+      dec(10)
+    EOS
+
+    assert_output /10\n9\n8\n7\n6\n5\n4\n3\n2\n1/ do
       @i.interpret input
     end
   end

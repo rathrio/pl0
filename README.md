@@ -53,11 +53,12 @@ Grammar
 -------
 
 ```
-program := statement (t statement)*
+program := statements?
+statements := statement (t statement)*
 t := '\n'
-statement := if_else_statement | while_statement | assignment | print_statement
-if_else_statement := 'if' '(' exp ')' '{' statement* '}' 'else' '{' statement* '}'
-while_statement := 'while' '(' exp ')' '{' statement* '}'
+statement := if_else_statement | while_statement | assignment | print_statement | exp
+if_else_statement := 'if' '(' exp ')' '{' statements? '}' 'else' '{' statement* '}'
+while_statement := 'while' '(' exp ')' '{' statements? '}'
 assignment := identifier '=' exp
 print_statement := 'p' exp
 exp := add_exp ( ( '<' | '>' | '<=' | '>=' | '==' ) add_exp )?
@@ -65,10 +66,12 @@ add_exp := mult_exp ( ( '+' | '-' ) mult_exp )*
 mult_exp := prefix_exp ( ( '*' | '/' | '%' ) prefix_exp )*
 prefix_exp := not_exp | prim_exp
 not_exp := ('!')* exp
-prim_exp := identifier | paren_exp | int_lit | true_lit | false_lit | string_lit
+prim_exp := identifier | paren_exp | int_lit | true_lit | false_lit | string_lit | function | function_call
 paren_exp := '(' exp ')'
 int_lit := [0-9] [0-9]*
 true_lit := 'true'
 false_lit := 'false'
 string_lit := '"' (!('"'))* '"'
+function := 'f' '(' arg_list? ')' '{' statements? '}'
+arg_list := id (',' id)*
 ```

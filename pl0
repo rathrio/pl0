@@ -9,7 +9,8 @@ class Parser < Parslet::Parser
   rule(:k_if) { sp? >> str('if') >> sp? }
   rule(:k_else) { sp? >> str('else') >> sp? }
   rule(:k_while) { sp? >> str('while') >> sp? }
-  rule(:k_p) { sp? >> str('p') >> sp? }
+  rule(:k_print) { sp? >> str('p') >> sp? }
+  rule(:k_function) { sp? >> str('f') >> sp? }
   rule(:lcurly) { sp? >> str("{") >> sp? }
   rule(:rcurly) { sp? >> str("}") >> sp? }
 
@@ -26,6 +27,7 @@ class Parser < Parslet::Parser
   rule(:slash) { sp? >> str("/") >> sp? }
   rule(:percent_sign) { sp? >> str("%") >> sp? }
   rule(:bang) { sp? >> str("!") >> sp? }
+  rule(:comma) { sp? >> str(",") >> sp? }
 
   rule(:quote) { str('"') }
 
@@ -39,19 +41,23 @@ class Parser < Parslet::Parser
   rule(:identifier) { (letter >> (letter | number | underscore).repeat).as(:id) }
 
   rule(:statement_list) { (statement >> (t >> statement).repeat).as(:statement_list) }
-  rule(:statement) { if_else_statement | while_statement | print_statement | assignment }
+  rule(:statement) { if_else_statement | while_statement | print_statement | assignment | exp }
   rule(:if_else_statement) { (k_if >> lparen >> exp.as(:condition) >> rparen >> lcurly >> statement_list.maybe.as(:if_body) >> rcurly >> k_else >> lcurly >> statement_list.maybe.as(:else_body) >> rcurly).as(:if_else_statement) }
   rule(:while_statement) { (k_while >> lparen >> exp.as(:condition) >> rparen >> lcurly >> statement_list.maybe.as(:body) >> rcurly).as(:while_statement) }
   rule(:assignment) { (identifier.as(:left) >> assign >> exp.as(:right)).as(:assignment) }
-  rule(:print_statement) { (k_p >> exp).as(:print_statement) }
+  rule(:print_statement) { (k_print >> exp).as(:print_statement) }
 
   rule(:exp) { (add_exp >> ((equals | lte | gte | lt | gt).as(:op) >> add_exp).maybe.as(:comparison)).as(:exp) }
   rule(:add_exp) { (mult_exp >> ((plus | minus | percent_sign).as(:op) >> mult_exp).repeat.as(:additions)).as(:add_exp) }
   rule(:mult_exp) { (prefix_exp >> ((star | slash).as(:op) >> prefix_exp).repeat.as(:multiplications)).as(:mult_exp) }
   rule(:prefix_exp) { (not_exp | prim_exp).as(:prefix_exp) }
   rule(:not_exp) { (bang.repeat(1).as(:bang) >> exp).as(:not_exp) }
-  rule(:prim_exp) { paren_exp | int_lit | true_lit | false_lit | string_lit | identifier }
+  rule(:prim_exp) { paren_exp | function | function_call | int_lit | true_lit | false_lit | string_lit | identifier }
   rule(:paren_exp) { (lparen >> exp >> rparen).as(:paren_exp) }
+  rule(:function) { (k_function >> lparen >> arg_list.maybe.as(:arg_list) >> rparen >> lcurly >> statement_list.maybe.as(:body) >> rcurly).as(:function) }
+  rule(:arg_list) { identifier >> (comma >> identifier).repeat }
+  rule(:function_call) { (identifier >> lparen >> exp_list.as(:args) >> rparen).as(:function_call) }
+  rule(:exp_list) { exp >> (comma >> exp).repeat }
 
   rule(:int_lit) { number.as(:int_lit) }
   rule(:true_lit) { str('true').as(:true_lit) }
@@ -127,6 +133,14 @@ class Id < AstNode
   attr_accessor :name
 end
 
+class Function < AstNode
+  attr_accessor :args, :body
+end
+
+class FunctionCall < AstNode
+  attr_accessor :id, :args
+end
+
 class AstBuilder < Parslet::Transform
   rule(int_lit: simple(:int_lit)) { Int.new(value: int_lit) }
   rule(string_lit: simple(:string_lit)) { Str.new(value: string_lit) }
@@ -184,6 +198,14 @@ class AstBuilder < Parslet::Transform
     end
   end
 
+  rule(function: { arg_list: subtree(:args), body: subtree(:body) }) do
+    Function.new(args: args, body: body)
+  end
+
+  rule(function_call: { id: subtree(:id), args: subtree(:args) }) do
+    FunctionCall.new(id: id.to_s, args: args)
+  end
+
   rule(op: simple(:op), mult_exp: subtree(:mult_exp)) do
     Operation.new(op: op.to_s.strip, exp: mult_exp)
   end
@@ -198,22 +220,16 @@ class AstBuilder < Parslet::Transform
 end
 
 class Interpreter
-  attr_reader :variables
+  attr_reader :definitions
 
   def initialize
     @parser = Parser.new
     @ast_builder = AstBuilder.new
-    @variables = {}
+    @definitions = {}
   end
 
   def interpret(input)
     tree = @parser.parse(input.strip)
-    ast = @ast_builder.apply(tree)
-    ast.accept(self)
-  end
-
-  def interpret_exp(input)
-    tree = @parser.exp.parse(input.strip)
     ast = @ast_builder.apply(tree)
     ast.accept(self)
   end
@@ -284,11 +300,11 @@ class Interpreter
   def visit_Assignment(n)
     var = n.left.name
     ref = visit(n.right)
-    @variables[var] = ref
+    @definitions[var] = ref
   end
 
   def visit_Id(n)
-    @variables[n.name]
+    @definitions[n.name]
   end
 
   def visit_StatementList(n)
@@ -297,6 +313,33 @@ class Interpreter
     else
       visit(n.statements)
     end
+  end
+
+  def visit_FunctionCall(n)
+    args = if n.args.is_a? Array
+             n.args.map { |a| visit(a) }
+           else
+             [visit(n.args)]
+           end
+
+    function = @definitions.fetch(n.id)
+    arg_ids = if (fargs = function.args).is_a? Array
+                fargs.map(&:name)
+              else
+                [fargs.name]
+              end
+
+    old_scope = @definitions.clone
+
+    arg_defs = arg_ids.zip(args).to_h
+    @definitions.merge!(arg_defs)
+    visit(function.body)
+  ensure
+    @definitions = old_scope
+  end
+
+  def visit_Function(n)
+    n
   end
 
   def visit_NilClass(n); end
