@@ -1,6 +1,8 @@
 PL0 - Tiny programming language interpreter
 ===========================================
 
+![Build Status](https://travis-ci.org/rathrio/pl0.svg?branch=master)
+
 Interpreter for a small toy language.
 
 Usage
