@@ -1,0 +1,11 @@
+foo = f(i) {
+  n = 23
+
+  inc = f(n) {
+    n + 1
+  }
+
+  p inc(n)
+}
+
+foo(2)

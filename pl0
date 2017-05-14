@@ -56,7 +56,7 @@ class Parser < Parslet::Parser
   rule(:paren_exp) { (lparen >> exp >> rparen).as(:paren_exp) }
   rule(:function) { (k_function >> lparen >> arg_list.maybe.as(:arg_list) >> rparen >> lcurly >> statement_list.maybe.as(:body) >> rcurly).as(:function) }
   rule(:arg_list) { identifier >> (comma >> identifier).repeat }
-  rule(:function_call) { (identifier >> lparen >> exp_list.as(:args) >> rparen).as(:function_call) }
+  rule(:function_call) { (identifier >> lparen >> exp_list.maybe.as(:args) >> rparen).as(:function_call) }
   rule(:exp_list) { exp >> (comma >> exp).repeat }
 
   rule(:int_lit) { number.as(:int_lit) }
@@ -345,6 +345,35 @@ class Interpreter
   def visit_NilClass(n); end
 end
 
+class Repl
+  def run
+    i = Interpreter.new
+
+    loop do
+      # Read
+      print '> '
+      input = STDIN.gets.chomp
+
+      # Eval
+      result = i.interpret(input)
+
+      # Print
+      print "=> "
+      print result
+      puts
+    end
+
+  rescue SystemExit, Interrupt
+    return
+  end
+end
+
 if __FILE__ == $PROGRAM_NAME
-  Interpreter.new.interpret(ARGF.read.strip)
+  if ARGV.first == '-r'
+    Repl.new.run
+    exit(1)
+  end
+
+  input = ARGF.read.strip
+  Interpreter.new.interpret(input)
 end

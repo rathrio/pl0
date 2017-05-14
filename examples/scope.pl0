@@ -1,0 +1,17 @@
+somevar = "foobar"
+
+dec = f(n) {
+    somevar = "inside"
+    p somevar
+
+    p n
+
+    if (n == 1) {
+    } else {
+        dec(n - 1)
+    }
+}
+
+dec(10)
+
+p somevar
