@@ -1,0 +1,6 @@
+sudo: false
+language: ruby
+install: gem install parslet minitest
+rvm:
+  - 2.4.0
+script: ruby pl0_test.rb
