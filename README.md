@@ -60,7 +60,7 @@ assignment := identifier '=' exp
 print_statement := 'p' exp
 exp := add_exp ( ( '<' | '>' | '<=' | '>=' | '==' ) add_exp )?
 add_exp := mult_exp ( ( '+' | '-' ) mult_exp )*
-mult_exp := prefix_exp ( ( '*' | '/' ) prefix_exp )*
+mult_exp := prefix_exp ( ( '*' | '/' | '%' ) prefix_exp )*
 prefix_exp := not_exp | prim_exp
 not_exp := ('!')* exp
 prim_exp := identifier | paren_exp | int_lit | true_lit | false_lit | string_lit

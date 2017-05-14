@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 load 'pl0'
 
 require 'parslet/convenience'
@@ -34,6 +35,18 @@ class ParserTest < MiniTest::Test
     tree = @parser.statement.parse(input)
   end
 
+  def test_nested_statements
+    input = <<~EOS
+      while (i < 4) {
+          if ( foo == bar ) {
+              p "HELLO"
+          } else {}
+      }
+    EOS
+
+    tree = @parser.statement.parse_with_debug(input)
+  end
+
   def test_while_loop
     input = <<~EOS
       while(true) {
@@ -52,7 +65,7 @@ class ParserTest < MiniTest::Test
       }
     EOS
 
-    tree = @parser.while_statement.parse_with_debug(input)
+    tree = @parser.while_statement.parse(input)
   end
 
   def test_exp
@@ -209,6 +222,12 @@ class InterpreterTest < MiniTest::Test
     assert_equal 110, result
   end
 
+  def test_modulo
+    input = '3 * 9 % 2'
+    result = @i.interpret_exp input
+    assert_equal 1, result
+  end
+
   def test_program
     input = <<~EOS
       foo = 2
@@ -225,7 +244,7 @@ class InterpreterTest < MiniTest::Test
   def test_program2
     input = <<~EOS
       foo = 2
-      bar = 34
+      bar = 34  
       baz = (foo + bar) / 2
       p baz + 4
     EOS
@@ -245,15 +264,45 @@ class InterpreterTest < MiniTest::Test
       }
     EOS
 
-    @i.interpret input
+    assert_output /10\n9\n8\n7\n6\n5\n4\n3\n2\n1/ do
+      @i.interpret input
+    end
   end
 
   def test_program4
     input = <<~EOS
-      foo = 1 + 1
-      a = foo
+      i = 1
+      while (i <= 20)
+      {
+          if (i % 3 == 0)
+          {
+              p "Foo"
+          } else {}
+
+          if (i % 5 == 0)
+          {
+              p "Bar"
+          } else {}
+
+          i = i + 1
+      }
     EOS
 
-    @i.interpret input
+    expected = <<~EOS
+      Foo
+      Bar
+      Foo
+      Foo
+      Bar
+      Foo
+      Foo
+      Bar
+      Foo
+      Bar
+    EOS
+
+    assert_output /#{expected}/ do
+      @i.interpret input
+    end
   end
 end

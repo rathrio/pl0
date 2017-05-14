@@ -24,6 +24,7 @@ class Parser < Parslet::Parser
 
   rule(:star) { sp? >> str("*") >> sp? }
   rule(:slash) { sp? >> str("/") >> sp? }
+  rule(:percent_sign) { sp? >> str("%") >> sp? }
   rule(:bang) { sp? >> str("!") >> sp? }
 
   rule(:quote) { str('"') }
@@ -45,7 +46,7 @@ class Parser < Parslet::Parser
   rule(:print_statement) { (k_p >> exp).as(:print_statement) }
 
   rule(:exp) { (add_exp >> ((equals | lte | gte | lt | gt).as(:op) >> add_exp).maybe.as(:comparison)).as(:exp) }
-  rule(:add_exp) { (mult_exp >> ((plus | minus).as(:op) >> mult_exp).repeat.as(:additions)).as(:add_exp) }
+  rule(:add_exp) { (mult_exp >> ((plus | minus | percent_sign).as(:op) >> mult_exp).repeat.as(:additions)).as(:add_exp) }
   rule(:mult_exp) { (prefix_exp >> ((star | slash).as(:op) >> prefix_exp).repeat.as(:multiplications)).as(:mult_exp) }
   rule(:prefix_exp) { (not_exp | prim_exp).as(:prefix_exp) }
   rule(:not_exp) { (bang.repeat(1).as(:bang) >> exp).as(:not_exp) }
@@ -57,7 +58,7 @@ class Parser < Parslet::Parser
   rule(:false_lit) { str('false').as(:false_lit) }
   rule(:string_lit) { quote >> (quote.absent? >> any).repeat.as(:string_lit) >> quote }
 
-  rule(:t) { match["\r\n"].repeat }
+  rule(:t) { match[" \r\n"].repeat }
   rule(:sp) { match[" \t\r\n"].repeat(1) }
   rule(:sp?) { sp.repeat }
 end
@@ -297,6 +298,8 @@ class Interpreter
       visit(n.statements)
     end
   end
+
+  def visit_NilClass(n); end
 end
 
 if __FILE__ == $PROGRAM_NAME
