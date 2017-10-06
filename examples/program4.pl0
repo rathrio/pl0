@@ -1,0 +1,13 @@
+id = f(x) {
+  x
+}
+
+add = f(x, y) {
+  x + y
+}
+
+sub = f(x, y) {
+  x - y
+}
+
+p add(1, sub(8, id(7)))
